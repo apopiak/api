@@ -12,6 +12,8 @@ import { StorageKey } from '@polkadot/types';
 
 import { memo } from '../util';
 
+// const CACHEKEY = 'derive:erasExposure';
+
 type KeysAndExposures = [StorageKey, Exposure][];
 
 function mapStakers (era: EraIndex, stakers: KeysAndExposures): DeriveEraExposure {
@@ -42,18 +44,21 @@ export function eraExposure (api: ApiInterfaceRx): (era: EraIndex) => Observable
   );
 }
 
-export function _erasExposure (api: ApiInterfaceRx): (eras: EraIndex[]) => Observable<DeriveEraExposure[]> {
-  return memo((eras: EraIndex[]): Observable<DeriveEraExposure[]> =>
-    eras.length
-      ? combineLatest(eras.map((era) => api.derive.staking.eraExposure(era)))
-      : of([])
-  );
+export function _erasExposure (api: ApiInterfaceRx): (eras: EraIndex[], withActive: boolean) => Observable<DeriveEraExposure[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  return memo((eras: EraIndex[], withActive: boolean): Observable<DeriveEraExposure[]> => {
+    if (!eras.length) {
+      return of([]);
+    }
+
+    return combineLatest(eras.map((era) => api.derive.staking.eraExposure(era)));
+  });
 }
 
 export function erasExposure (api: ApiInterfaceRx): (withActive?: boolean) => Observable<DeriveEraExposure[]> {
-  return memo((withActive?: boolean): Observable<DeriveEraExposure[]> =>
+  return memo((withActive = false): Observable<DeriveEraExposure[]> =>
     api.derive.staking.erasHistoric(withActive).pipe(
-      switchMap((eras) => api.derive.staking._erasExposure(eras))
+      switchMap((eras) => api.derive.staking._erasExposure(eras, withActive))
     )
   );
 }

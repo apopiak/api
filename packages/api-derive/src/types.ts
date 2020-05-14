@@ -14,6 +14,11 @@ export * from './parachains/types';
 export * from './session/types';
 export * from './staking/types';
 
+export interface DeriveCache {
+  get <T = any> (key: string): T | null;
+  set (key: string, value: any): void;
+}
+
 export interface DeriveBalancesAccount {
   accountId: AccountId;
   accountNonce: Index;

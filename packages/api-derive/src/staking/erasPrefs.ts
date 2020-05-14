@@ -30,8 +30,9 @@ export function eraPrefs (api: ApiInterfaceRx): (era: EraIndex) => Observable<De
   );
 }
 
-export function _erasPrefs (api: ApiInterfaceRx): (eras: EraIndex[]) => Observable<DeriveEraPrefs[]> {
-  return memo((eras: EraIndex[]): Observable<DeriveEraPrefs[]> =>
+export function _erasPrefs (api: ApiInterfaceRx): (eras: EraIndex[], withActive: boolean) => Observable<DeriveEraPrefs[]> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  return memo((eras: EraIndex[], withActive: boolean): Observable<DeriveEraPrefs[]> =>
     eras.length
       ? combineLatest(eras.map((era) => api.derive.staking.eraPrefs(era)))
       : of([])
@@ -39,9 +40,9 @@ export function _erasPrefs (api: ApiInterfaceRx): (eras: EraIndex[]) => Observab
 }
 
 export function erasPrefs (api: ApiInterfaceRx): (withActive?: boolean) => Observable<DeriveEraPrefs[]> {
-  return memo((withActive?: boolean): Observable<DeriveEraPrefs[]> =>
+  return memo((withActive = false): Observable<DeriveEraPrefs[]> =>
     api.derive.staking.erasHistoric(withActive).pipe(
-      switchMap((eras) => api.derive.staking._erasPrefs(eras))
+      switchMap((eras) => api.derive.staking._erasPrefs(eras, withActive))
     )
   );
 }
