@@ -15,7 +15,7 @@ export * from './session/types';
 export * from './staking/types';
 
 export interface DeriveCache {
-  get <T = any> (key: string): T | null;
+  get <T = any> (key: string): T | null | undefined;
   set (key: string, value: any): void;
 }
 

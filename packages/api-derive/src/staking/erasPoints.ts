@@ -3,13 +3,45 @@
 // of the Apache-2.0 license. See the LICENSE file for details.
 
 import { ApiInterfaceRx } from '@polkadot/api/types';
-import { EraIndex, EraRewardPoints } from '@polkadot/types/interfaces';
+import { EraIndex, EraRewardPoints, RewardPoint } from '@polkadot/types/interfaces';
 import { DeriveEraPoints, DeriveEraValPoints } from '../types';
 
 import { Observable, of } from 'rxjs';
 import { map, switchMap } from 'rxjs/operators';
 
-import { memo } from '../util';
+import { deriveCache, memo } from '../util';
+
+interface DeriveEraPointsJSON {
+  era: string;
+  eraPoints: string;
+  validators: Record<string, string>;
+}
+
+const CACHE_KEY = 'staking:erasPoints';
+
+function deserialize (api: ApiInterfaceRx, { era, eraPoints, validators }: DeriveEraPointsJSON): DeriveEraPoints {
+  return {
+    era: api.registry.createType('EraIndex', era),
+    eraPoints: api.registry.createType('RewardPoint', eraPoints),
+    validators: Object.keys(validators).reduce((result: Record<string, RewardPoint>, validatorId): Record<string, RewardPoint> => {
+      result[validatorId] = api.registry.createType('RewardPoint', validators[validatorId]);
+
+      return result;
+    }, {})
+  };
+}
+
+function serialize ({ era, eraPoints, validators }: DeriveEraPoints): DeriveEraPointsJSON {
+  return {
+    era: era.toJSON(),
+    eraPoints: eraPoints.toJSON(),
+    validators: Object.keys(validators).reduce((result: Record<string, string>, validatorId): Record<string, string> => {
+      result[validatorId] = validators[validatorId].toJSON();
+
+      return result;
+    }, {})
+  };
+}
 
 function mapValidators ({ individual }: EraRewardPoints): DeriveEraValPoints {
   return [...individual.entries()]
@@ -23,19 +55,48 @@ function mapValidators ({ individual }: EraRewardPoints): DeriveEraValPoints {
 
 export function _erasPoints (api: ApiInterfaceRx): (eras: EraIndex[], withActive: boolean) => Observable<DeriveEraPoints[]> {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  return memo((eras: EraIndex[], withActive: boolean): Observable<DeriveEraPoints[]> =>
-    eras.length
-      ? api.query.staking.erasRewardPoints.multi<EraRewardPoints>(eras).pipe(
-        map((points) =>
-          eras.map((era, index): DeriveEraPoints => ({
-            era,
-            eraPoints: points[index].total,
-            validators: mapValidators(points[index])
-          }))
-        )
-      )
-      : of([])
-  );
+  return memo((eras: EraIndex[], withActive: boolean): Observable<DeriveEraPoints[]> => {
+    if (!eras.length) {
+      return of([]);
+    }
+
+    const cached = (deriveCache.get<DeriveEraPointsJSON[]>(CACHE_KEY) || [])
+      .map((c) => deserialize(api, c))
+      .filter((c) => eras.some((era) => era.eq(c.era)));
+    const filtered = withActive
+      ? eras
+      : eras.filter((era) => !cached.some((c) => era.eq(c.era)));
+
+    if (!filtered.length) {
+      return of(cached);
+    }
+
+    console.error('filtered', eras, filtered);
+
+    return api.query.staking.erasRewardPoints.multi<EraRewardPoints>(filtered).pipe(
+      map((points): DeriveEraPoints[] => {
+        const retrieved = filtered.map((era, index): DeriveEraPoints => ({
+          era,
+          eraPoints: points[index].total,
+          validators: mapValidators(points[index])
+        }));
+
+        if (withActive) {
+          return retrieved;
+        }
+
+        const result = cached
+          .concat(...retrieved)
+          .sort((a, b) => a.era.cmp(b.era));
+
+        deriveCache.set(CACHE_KEY, result.map((d) => serialize(d)));
+
+        console.error(result);
+
+        return result;
+      })
+    );
+  });
 }
 
 export function erasPoints (api: ApiInterfaceRx): (withActive?: boolean) => Observable<DeriveEraPoints[]> {
